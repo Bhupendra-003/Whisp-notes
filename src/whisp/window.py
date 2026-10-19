@@ -2201,7 +2201,7 @@ class WhispWindow(Adw.ApplicationWindow):
             title=_("Launch Whisp")
         )
 
-        global_shortcut_label = Adw.ShortcutLabel(accelerator=global_accel)
+        global_shortcut_label = Gtk.ShortcutLabel(accelerator=global_accel)
         global_shortcut_label.set_disabled_text(_("Disabled"))
         global_shortcut_label.set_valign(Gtk.Align.CENTER)
 
@@ -2282,8 +2282,8 @@ class WhispWindow(Adw.ApplicationWindow):
                 
                 row = Adw.ActionRow(title=label)
                 
-                # Use Adwaita's native shortcut label (no + signs, matches cheat sheet)
-                shortcut_label = Adw.ShortcutLabel(accelerator=display_accel)
+                # Use Gtk's native shortcut label (no + signs, matches cheat sheet)
+                shortcut_label = Gtk.ShortcutLabel(accelerator=display_accel)
                 shortcut_label.set_disabled_text(_("Disabled"))
                 shortcut_label.set_valign(Gtk.Align.CENTER)
                 
