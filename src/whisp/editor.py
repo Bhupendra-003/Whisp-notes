@@ -160,7 +160,7 @@ class NoteEditor(Gtk.Overlay):
 
         self.load_file()
 
-        self.buffer.connect("changed", self.on_buffer_changed)
+        self.changed_handler_id = self.buffer.connect("changed", self.on_buffer_changed)
         self.save_timeout_id = 0
 
         # Re-tag search highlight for the new viewport on scroll.
@@ -1880,6 +1880,38 @@ class NoteEditor(Gtk.Overlay):
             self.last_word_count = len(content.split())
         else:
             self.last_word_count = 0
+
+    def reload_from_disk(self):
+        """Pick up an outside edit (e.g. a sync tool). Returns True if the buffer changed."""
+        # Unsaved typing wins; its pending save will write over the outside edit.
+        if self.save_timeout_id or not self.file_path.exists():
+            return False
+        try:
+            content = self.file_path.read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            return False
+        start, end = self.buffer.get_bounds()
+        if content == self.buffer.get_text(start, end, True):
+            return False  # our own save, or nothing new
+
+        cursor = self.buffer.get_iter_at_mark(self.buffer.get_insert()).get_offset()
+        vadj = self.scrolled.get_vadjustment()
+        scroll = vadj.get_value()
+
+        # Not a user edit: don't schedule a save or rewrite checkboxes.
+        self.buffer.handler_block(self.changed_handler_id)
+        try:
+            self.buffer.set_text(content)
+        finally:
+            self.buffer.handler_unblock(self.changed_handler_id)
+        self.highlighter.highlight()
+        self.last_word_count = len(content.split())
+
+        self.buffer.place_cursor(self.buffer.get_iter_at_offset(min(cursor, self.buffer.get_char_count())))
+        GLib.idle_add(lambda: [vadj.set_value(scroll), False][-1])
+        if self.on_title_changed:
+            self.on_title_changed(self)
+        return True
 
     def set_search_highlight(self, term):
         self.highlighter.set_search_term(term)

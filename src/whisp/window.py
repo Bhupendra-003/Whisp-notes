@@ -296,6 +296,13 @@ class WhispWindow(Adw.ApplicationWindow):
         collapse.add_setter(self.split_view, "collapsed", True)
         self.add_breakpoint(collapse)
         self._sidebar_refresh_id = 0
+
+        # Pick up notes changed on disk by something else (e.g. Syncthing).
+        self._disk_changes = set()
+        self._disk_changes_id = 0
+        self.notes_monitor = Gio.File.new_for_path(str(DATA_DIR)).monitor_directory(
+            Gio.FileMonitorFlags.WATCH_MOVES, None)
+        self.notes_monitor.connect("changed", self.on_notes_dir_changed)
         
         self.last_deleted_file = None
         self.update_banner = None
@@ -1626,6 +1633,34 @@ class WhispWindow(Adw.ApplicationWindow):
         editor = self.get_current_editor()
         if editor:
             editor.set_search_highlight(text)
+        return False
+
+    def on_notes_dir_changed(self, _monitor, file, other_file, event):
+        if event == Gio.FileMonitorEvent.ATTRIBUTE_CHANGED:
+            return
+        # Sync tools write a temp file and rename it over the note, so check both ends.
+        for f in (file, other_file):
+            path = Path(f.get_path()) if f is not None and f.get_path() else None
+            if path and path.parent == DATA_DIR and path.suffix == ".md" and not path.name.startswith("."):
+                self._disk_changes.add(path)
+        if self._disk_changes and not self._disk_changes_id:
+            self._disk_changes_id = GLib.timeout_add(300, self._apply_disk_changes)
+
+    def _apply_disk_changes(self):
+        self._disk_changes_id = 0
+        paths, self._disk_changes = self._disk_changes, set()
+        for path in paths:
+            editor = self.find_editor(path)
+            if editor is None:
+                continue
+            if path.exists():
+                editor.reload_from_disk()
+            elif not editor.save_timeout_id:
+                # Deleted elsewhere; keep it only if there is unsaved typing.
+                self.carousel.remove(editor)
+        self.ensure_empty_note_at_end()
+        self.update_title()
+        self.refresh_sidebar()
         return False
 
     def find_editor(self, file_path):

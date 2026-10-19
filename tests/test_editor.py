@@ -217,5 +217,43 @@ class TestTextColor(unittest.TestCase):
         self.assertEqual(self.text_of(editor), '<span style="color:notacolor">x</span> y')
 
 
+class TestReloadFromDisk(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        Gtk.init()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "note.md"
+        self.path.write_text("old text", encoding="utf-8")
+        self.editor = NoteEditor(file_path=self.path)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def text_of(self, editor):
+        return editor.buffer.get_text(editor.buffer.get_start_iter(), editor.buffer.get_end_iter(), True)
+
+    def test_outside_edit_is_loaded_without_scheduling_a_save(self):
+        self.path.write_text("new text from another device", encoding="utf-8")
+        self.assertTrue(self.editor.reload_from_disk())
+        self.assertEqual(self.text_of(self.editor), "new text from another device")
+        self.assertEqual(self.editor.save_timeout_id, 0)
+
+    def test_own_save_is_a_no_op(self):
+        self.assertFalse(self.editor.reload_from_disk())
+
+    def test_unsaved_typing_is_not_overwritten(self):
+        self.editor.buffer.set_text("typing in progress")
+        self.path.write_text("new text from another device", encoding="utf-8")
+        self.assertFalse(self.editor.reload_from_disk())
+        self.assertEqual(self.text_of(self.editor), "typing in progress")
+
+    def test_markdown_checkboxes_are_kept_as_written(self):
+        self.path.write_text("- [ ] Task", encoding="utf-8")
+        self.editor.reload_from_disk()
+        self.assertEqual(self.text_of(self.editor), "- [ ] Task")
+
+
 if __name__ == "__main__":
     unittest.main()
